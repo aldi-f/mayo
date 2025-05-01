@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Any
 import logging
 from sqlalchemy import create_engine
 from sqlalchemy import JSON

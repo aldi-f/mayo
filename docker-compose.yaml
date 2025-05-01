@@ -1,7 +1,6 @@
-version: '3'
 services:
-  mustard_python:
-    container_name: mustard_python
+  mayo:
+    container_name: mayo
     restart: unless-stopped
     build:
       context: .

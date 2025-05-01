@@ -4,9 +4,8 @@ import logging
 import os
 from dotenv import load_dotenv
 from app.client.openrouter import OPENROUTER_CLIENT
-from app.config import 
-from database import Servers, init_db, Session
-from configurations import SERVER_CONFIGURATIONS, OPENAI_CLIENT, SYSTEM_PROMPT, DEEPSEEK_CLIENT, OPENROUTER_CLIENT
+from app.client.database import init_db, Session, Servers
+from app.config import BASE_SYSTEM_PROMPT, BASE_MODEL
 
 logger = logging.getLogger('discord')
     
@@ -25,15 +24,6 @@ async def load(bot: commands.Bot):
     for cog in cogs:
         await bot.load_extension(f'commands.{cog}')
 
-    @bot.tree.command(name="sync")
-    async def func(interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        try:
-            await bot.tree.sync()
-            await interaction.followup.send(f"Done. [{', '.join([app.name for app in commands])}]", ephemeral=True)
-        except: 
-            await interaction.followup.send("Something went wrong!", ephemeral=True)
-    
     logger.info("Loading database")
     init_db() 
     for guild in bot.guilds:
@@ -47,26 +37,16 @@ async def load(bot: commands.Bot):
 
         # fix for existing servers
         changed = False
-        configs = db_guild.configurations
-        if not db_guild.configurations.get("gpt_system_prompt"):
+        if not db_guild.model:
             changed = True
-            configs["gpt_system_prompt"] = SYSTEM_PROMPT
-        if not db_guild.configurations.get("deepseek_system_prompt"):
+            db_guild.model = BASE_MODEL
+        if not db_guild.system_prompt:
             changed = True
-            configs["deepseek_system_prompt"] = SYSTEM_PROMPT
+            db_guild.system_prompt = BASE_SYSTEM_PROMPT
         if changed:
-            db_guild.configurations = { **configs}
             Session.commit()
-        SERVER_CONFIGURATIONS.update_server_configurations(str(guild.id), db_guild.configurations)
     OPENROUTER_CLIENT.set_client(OPENROUTER_KEY)
 
-
-
-
-
-
-# when importing something from mustard.py in another file, it will rerun bot.run()
-# this takes care of it
 if __name__ == "__main__":
     intents = discord.Intents.default()
     intents.message_content = True
