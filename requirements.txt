@@ -1,0 +1,4 @@
+discord.py
+python-dotenv
+SQLAlchemy==2.0.23
+openai

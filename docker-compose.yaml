@@ -1,0 +1,12 @@
+version: '3'
+services:
+  mustard_python:
+    container_name: mustard_python
+    restart: unless-stopped
+    build:
+      context: .
+    volumes:
+      - db_data:/data
+
+volumes:
+  db_data:
