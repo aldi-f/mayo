@@ -56,7 +56,6 @@ if __name__ == "__main__":
     @bot.event
     async def on_ready():
         await load(bot)
-        logger.info(f"Loaded commands: [{', '.join([app.name for app in commands])}]")
         logger.info("Mayo ready")
 
 
