@@ -3,9 +3,9 @@ from discord.ext import commands
 import logging
 import os
 from dotenv import load_dotenv
-from app.client.openrouter import OPENROUTER_CLIENT
-from app.client.database import init_db, Session, Servers
-from app.config import BASE_SYSTEM_PROMPT, BASE_MODEL
+from client.openrouter import OPENROUTER_CLIENT
+from client.database import init_db, Session, Servers
+from config import BASE_SYSTEM_PROMPT, BASE_MODEL
 
 logger = logging.getLogger('discord')
     

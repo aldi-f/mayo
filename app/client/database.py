@@ -6,7 +6,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.ext.mutable import MutableDict, MutableList
-from app.config import BASE_SYSTEM_PROMPT
+from config import BASE_SYSTEM_PROMPT
 
 logger = logging.getLogger('discord')
 

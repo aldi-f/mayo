@@ -1,7 +1,7 @@
 import discord
 import requests
 from discord.ext import commands
-from app.client.database import Session, Servers
+from client.database import Session, Servers
 
 class Settings(commands.Cog):
     def __init__(self, bot):
