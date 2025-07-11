@@ -45,7 +45,7 @@ class Settings(commands.Cog):
 
 
     @settings.command(name='prompt')
-    @commands.has_permissions(administrator=True)
+    @commands.is_owner()
     async def set_prompt(self, ctx, *, prompt: str):
         if not prompt:
             await ctx.send("❌ Please provide a system prompt.")
