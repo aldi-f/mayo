@@ -1,13 +1,17 @@
 import logging
+import discord.ext.commands
 import requests
 import base64
 from typing import List, Optional
 from openai.types.chat import ChatCompletionMessageParam
 
+import discord
+from discord import app_commands
 from discord.ext import commands
 from client.openrouter import OPENROUTER_CLIENT
-from client.database import Session, Servers
+from client.database import Session, Servers, UserSettings
 from config import BASE_SYSTEM_PROMPT, BASE_MODEL
+import discord.ext
 
 logger = logging.getLogger('discord')
 
@@ -114,5 +118,36 @@ class Gemini(commands.Cog):
 
             await ctx.send(response)
 
-async def setup(bot):
+
+    @app_commands.command(name="chat", description="Chat with the bot using your personal settings")
+    @app_commands.describe(prompt="Your message to the bot")
+    @app_commands.allowed_installs(users=True, guilds=False)
+    async def chat_slash(self, interaction: discord.Interaction, prompt: str):
+        await interaction.response.defer(thinking=True)
+
+        user_id = str(interaction.user.id)
+        user_settings = Session.get(UserSettings, user_id)
+        if user_settings:
+            system_prompt = user_settings.system_prompt or BASE_SYSTEM_PROMPT
+            model = user_settings.model or BASE_MODEL
+        else:
+            system_prompt = BASE_SYSTEM_PROMPT
+            model = BASE_MODEL
+            user = UserSettings(id=user_id, model=model, system_prompt=system_prompt)
+            Session.add(user)
+            Session.commit()
+
+        context = await self.bot.get_context(interaction)
+        complete_prompt = [{"role": "system", "content": system_prompt}] + await self.build_prompt(context, prompt)
+
+        response = OPENROUTER_CLIENT.chat(
+            model=model,
+            messages=complete_prompt
+        )
+
+        await interaction.followup.send(response)
+
+
+async def setup(bot: discord.ext.commands.Bot):
     await bot.add_cog(Gemini(bot))
+    bot.tree.add_command(Gemini.chat_slash, guild=None)

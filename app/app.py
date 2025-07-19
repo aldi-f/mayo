@@ -25,8 +25,22 @@ async def load(bot: commands.Bot):
     for cog in cogs:
         await bot.load_extension(f'commands.{cog}')
 
+    @bot.tree.command(name="sync")
+    async def sync(interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        # only for owner of bot
+        if interaction.user.id != bot.owner_id:
+            await interaction.followup.send("You are not the owner of this bot!", ephemeral=True)
+            return
+        try:
+            synced = await bot.tree.sync()
+            await interaction.followup.send(f"Done. [{', '.join([app.name for app in synced])}]", ephemeral=True)
+        except: 
+            await interaction.followup.send("Something went wrong!", ephemeral=True)
+
     logger.info("Loading database")
     init_db() 
+
     for guild in bot.guilds:
         db_guild = Session.get(Servers,str(guild.id))
         # if it's a new server
@@ -56,7 +70,8 @@ if __name__ == "__main__":
     @bot.event
     async def on_ready():
         await load(bot)
+        await bot.tree.sync()
         logger.info("Mayo ready")
-
+        
 
     bot.run(DISCORD_TOKEN)

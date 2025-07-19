@@ -32,6 +32,15 @@ class Servers(Base):
     model: Mapped[str] = mapped_column(default="google/gemini-2.0-flash-001")
     system_prompt: Mapped[str] = mapped_column(default=BASE_SYSTEM_PROMPT)
 
+
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    model: Mapped[str] = mapped_column(default="google/gemini-2.0-flash-001")
+    system_prompt: Mapped[str] = mapped_column(default=BASE_SYSTEM_PROMPT)
+
+
 def init_db():
     with engine.connect(): # just to start it
         Base.metadata.create_all(engine)
