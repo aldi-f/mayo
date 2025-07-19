@@ -150,4 +150,3 @@ class Gemini(commands.Cog):
 
 async def setup(bot: discord.ext.commands.Bot):
     await bot.add_cog(Gemini(bot))
-    bot.tree.add_command(Gemini.chat_slash, guild=None)
