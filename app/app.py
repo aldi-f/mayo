@@ -18,6 +18,7 @@ BASE_DIR = os.getcwd()
 cogs = [
     "chat",
     "settings",
+    "grok_check",
 ]
 
 async def load(bot: commands.Bot):

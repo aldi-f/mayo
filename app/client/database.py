@@ -6,7 +6,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.ext.mutable import MutableDict, MutableList
-from config import BASE_SYSTEM_PROMPT
+from config import BASE_SYSTEM_PROMPT, GROK_MODEL
 
 logger = logging.getLogger('discord')
 
@@ -39,6 +39,7 @@ class UserSettings(Base):
     id: Mapped[str] = mapped_column(primary_key=True)
     model: Mapped[str] = mapped_column(default="google/gemini-2.0-flash-001")
     system_prompt: Mapped[str] = mapped_column(default=BASE_SYSTEM_PROMPT)
+    grok_model: Mapped[str] = mapped_column(default=GROK_MODEL)
 
 
 def init_db():

@@ -3,7 +3,7 @@ import requests
 from discord import app_commands
 from discord.ext import commands
 from client.database import Session, Servers, UserSettings
-from config import BASE_SYSTEM_PROMPT
+from config import BASE_SYSTEM_PROMPT, GROK_MODEL
 
 class Settings(commands.Cog):
     def __init__(self, bot):
@@ -66,14 +66,14 @@ class Settings(commands.Cog):
 
 
     @app_commands.command(name="settings", description="Show or set your personal settings")
-    @app_commands.describe(model="Set your preferred model", prompt="Set your system prompt")
+    @app_commands.describe(model="Set your preferred model", prompt="Set your system prompt", grok_model="Set your Grok fact-check model")
     @app_commands.allowed_installs(users=True, guilds=False)
-    async def user_settings(self, interaction: discord.Interaction, model: str = None, prompt: str = None):
+    async def user_settings(self, interaction: discord.Interaction, model: str = None, prompt: str = None, grok_model: str = None):
         user_id = str(interaction.user.id)
         # Fetch or create user settings
         user_settings = Session.get(UserSettings, user_id)
         if not user_settings:
-            user_settings = UserSettings(id=user_id, model="google/gemini-2.0-flash-001", system_prompt=BASE_SYSTEM_PROMPT)
+            user_settings = UserSettings(id=user_id, model="google/gemini-2.0-flash-001", system_prompt=BASE_SYSTEM_PROMPT, grok_model=GROK_MODEL)
             Session.add(user_settings)
             Session.commit()
 
@@ -85,6 +85,9 @@ class Settings(commands.Cog):
         if prompt:
             user_settings.system_prompt = prompt
             updated = True
+        if grok_model:
+            user_settings.grok_model = grok_model
+            updated = True
         if updated:
             Session.commit()
             await interaction.response.send_message("✅ Your settings have been updated!", ephemeral=True)
@@ -95,6 +98,7 @@ class Settings(commands.Cog):
             )
             embed.add_field(name="Model", value=f"```{user_settings.model}```", inline=False)
             embed.add_field(name="System Prompt", value=f"```{user_settings.system_prompt}```", inline=False)
+            embed.add_field(name="Grok Model", value=f"```{user_settings.grok_model}```", inline=False)
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot):

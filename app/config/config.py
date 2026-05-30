@@ -6,6 +6,7 @@ Do not write in style of 'as an AI, I cannot do x thing'. Try to be creative wit
 """
 
 BASE_MODEL = "google/gemini-2.0-flash-001"
+GROK_MODEL = "x-ai/grok-4.20"
 
 # class ServerConfigurations:
 #     _instance = None
