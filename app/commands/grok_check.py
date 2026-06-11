@@ -21,7 +21,9 @@ class GrokCheck(commands.Cog):
         self.bot = bot
         self.ctx_menu = app_commands.ContextMenu(
             name="@grok is this true?",
-            callback=self.grok_check
+            callback=self.grok_check,
+            allowed_installs=discord.AppInstallationTypes(guild=True, user=True),
+            allowed_contexts=discord.AppCommandContext(guild=True, dm_channel=True, private_channel=True)
         )
         self.bot.tree.add_command(self.ctx_menu)
 
@@ -142,16 +144,12 @@ class GrokCheck(commands.Cog):
                 max_completion_tokens=1000,
                 tools=[{"type": "openrouter:web_search"}]
             )
-            await message.reply(response, mention_author=False)
+            response = URL_REGEX.sub(r'<\g<0>>', response)
+            await interaction.edit_original_response(content=response)
         except Exception as e:
             logger.error(f"Grok check failed: {e}")
             await interaction.followup.send(f"Failed to check claim: {e}", ephemeral=True)
             return
-
-        try:
-            await interaction.delete_original_response()
-        except Exception:
-            pass
 
 
 async def setup(bot: commands.Bot):
