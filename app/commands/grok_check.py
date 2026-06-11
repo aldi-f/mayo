@@ -19,6 +19,14 @@ URL_REGEX = re.compile(r'https?://[^\s<>"\'\]\)]+')
 class GrokCheck(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.ctx_menu = app_commands.ContextMenu(
+            name="@grok is this true?",
+            callback=self.grok_check
+        )
+        self.bot.tree.add_command(self.ctx_menu)
+
+    def cog_unload(self):
+        self.bot.tree.remove_command(self.ctx_menu.name, type=self.ctx_menu.type)
 
     def _extract_urls(self, *texts: str) -> list[str]:
         urls = []
@@ -54,7 +62,6 @@ class GrokCheck(commands.Cog):
             logger.debug(f"Failed to convert image to base64: {e}")
             return None
 
-    @app_commands.context_menu(name="@grok is this true?")
     async def grok_check(self, interaction: discord.Interaction, message: discord.Message):
         await interaction.response.defer(thinking=True, ephemeral=False)
 
