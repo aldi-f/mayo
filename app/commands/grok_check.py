@@ -11,7 +11,7 @@ from config import GROK_MODEL
 
 logger = logging.getLogger('discord')
 
-GROK_SYSTEM_PROMPT = "You are a fact-checking assistant. Your job is to verify whether the given claim is true or false using web search. Provide a clear verdict, supporting evidence, and cite your sources. Be concise but thorough."
+GROK_SYSTEM_PROMPT = "You are a fact-checking assistant. Your job is to verify whether the given claim is true or false using web search. Provide a clear verdict, supporting evidence, and cite your sources. Be concise but thorough. CRITICAL: Your entire response MUST be under 2000 characters. Do not exceed this limit."
 
 URL_REGEX = re.compile(r'https?://[^\s<>"\'\]\)]+')
 
@@ -63,6 +63,22 @@ class GrokCheck(commands.Cog):
         except Exception as e:
             logger.debug(f"Failed to convert image to base64: {e}")
             return None
+
+    @staticmethod
+    def _chunk_text(text: str, chunk_size: int = 1900) -> list[str]:
+        words = text.split(' ')
+        chunks, current, current_len = [], [], 0
+        for word in words:
+            word_len = len(word) + 1
+            if current_len + word_len > chunk_size and current:
+                chunks.append(' '.join(current))
+                current, current_len = [word], len(word)
+            else:
+                current.append(word)
+                current_len += word_len
+        if current:
+            chunks.append(' '.join(current))
+        return chunks
 
     async def grok_check(self, interaction: discord.Interaction, message: discord.Message):
         await interaction.response.defer(thinking=True, ephemeral=False)
@@ -145,7 +161,10 @@ class GrokCheck(commands.Cog):
                 tools=[{"type": "openrouter:web_search"}]
             )
             response = URL_REGEX.sub(r'<\g<0>>', response)
-            await interaction.edit_original_response(content=response)
+            chunks = self._chunk_text(response)
+            await interaction.edit_original_response(content=chunks[0])
+            for chunk in chunks[1:]:
+                await interaction.followup.send(chunk)
         except Exception as e:
             logger.error(f"Grok check failed: {e}")
             await interaction.followup.send(f"Failed to check claim: {e}", ephemeral=True)
