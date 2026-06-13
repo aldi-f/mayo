@@ -10,7 +10,7 @@ from discord import app_commands
 from discord.ext import commands
 from client.openrouter import OPENROUTER_CLIENT
 from client.database import Session, Servers, UserSettings
-from config import BASE_SYSTEM_PROMPT, BASE_MODEL
+from config import settings
 import discord.ext
 
 logger = logging.getLogger('discord')
@@ -18,7 +18,7 @@ logger = logging.getLogger('discord')
 
 class Gemini(commands.Cog):
     def __init__(self, bot: commands.Bot):
-        self.bot = bot 
+        self.bot = bot
         self.max_history_length = 20
         self.conversation_history = {}  # caching
 
@@ -34,7 +34,7 @@ class Gemini(commands.Cog):
         except Exception as e:
             logger.error(f"Failed to convert image to base64: {e}")
             return None
-        
+
     async def build_prompt(self, ctx: commands.Context, prompt: str) -> List[ChatCompletionMessageParam]:
 
         # If user has no conversation history, create one
@@ -49,7 +49,7 @@ class Gemini(commands.Cog):
         # Extract image URLs from attachments
         image_urls = []
         if ctx.message.attachments:
-            image_urls.extend([att.url for att in ctx.message.attachments if att.content_type.startswith('image/')])
+            image_urls.extend([att.url for att in ctx.message.attachments if att.content_type and att.content_type.startswith('image/')])
 
         reply_to = ctx.message.reference and ctx.message.reference.resolved or None
 
@@ -57,8 +57,8 @@ class Gemini(commands.Cog):
             replied_message = await ctx.channel.fetch_message(ctx.message.reference.message_id)
             # Add images from replied message
             if replied_message.attachments:
-                image_urls.extend([att.url for att in replied_message.attachments if att.content_type.startswith('image/')])
-                
+                image_urls.extend([att.url for att in replied_message.attachments if att.content_type and att.content_type.startswith('image/')])
+
             if replied_message.author == self.bot.user:
                 complete_prompt = conversation_history + [
                     {"role": "assistant", "content": replied_message.content},
@@ -89,15 +89,16 @@ class Gemini(commands.Cog):
     async def chat(self, ctx: commands.Context, *, prompt: str = None):
         if not prompt:
             return
-        
+
         async with ctx.typing():
-            server = Session.get(Servers, str(ctx.guild.id))
-            system_prompt = server.system_prompt or BASE_SYSTEM_PROMPT
-            model = server.model or BASE_MODEL
-        
+            with Session() as session:
+                server = session.get(Servers, str(ctx.guild.id))
+                system_prompt = server.chat_system_prompt or settings.BASE_SYSTEM_PROMPT
+                model = server.chat_model or settings.BASE_MODEL
+                temperature = server.chat_temperature or 1.0
+
             complete_prompt = [{"role": "system", "content": system_prompt}] + await self.build_prompt(ctx, prompt)
-            
-            # create another complete prompt but remove the type: image_url
+
             text_prompts = []
             for prompt in complete_prompt:
                 if prompt.get('content') and isinstance(prompt['content'], list):
@@ -111,9 +112,10 @@ class Gemini(commands.Cog):
                     text_prompts.append(prompt)
             logger.info(text_prompts)
 
-            response =  OPENROUTER_CLIENT.chat(
+            response = OPENROUTER_CLIENT.chat(
                 model=model,
-                messages=complete_prompt
+                messages=complete_prompt,
+                temperature=temperature,
             )
 
             await ctx.send(response)
@@ -126,23 +128,27 @@ class Gemini(commands.Cog):
         await interaction.response.defer(thinking=True)
 
         user_id = str(interaction.user.id)
-        user_settings = Session.get(UserSettings, user_id)
-        if user_settings:
-            system_prompt = user_settings.system_prompt or BASE_SYSTEM_PROMPT
-            model = user_settings.model or BASE_MODEL
-        else:
-            system_prompt = BASE_SYSTEM_PROMPT
-            model = BASE_MODEL
-            user = UserSettings(id=user_id, model=model, system_prompt=system_prompt)
-            Session.add(user)
-            Session.commit()
+        with Session() as session:
+            user_settings = session.get(UserSettings, user_id)
+            if user_settings:
+                system_prompt = user_settings.chat_system_prompt or settings.BASE_SYSTEM_PROMPT
+                model = user_settings.chat_model or settings.BASE_MODEL
+                temperature = user_settings.chat_temperature or 1.0
+            else:
+                system_prompt = settings.BASE_SYSTEM_PROMPT
+                model = settings.BASE_MODEL
+                temperature = 1.0
+                user = UserSettings(user_id=user_id, chat_model=model, chat_system_prompt=system_prompt)
+                session.add(user)
+                session.commit()
 
         context = await self.bot.get_context(interaction)
         complete_prompt = [{"role": "system", "content": system_prompt}] + await self.build_prompt(context, prompt)
 
         response = OPENROUTER_CLIENT.chat(
             model=model,
-            messages=complete_prompt
+            messages=complete_prompt,
+            temperature=temperature,
         )
 
         await interaction.followup.send(response)

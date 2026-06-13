@@ -7,11 +7,9 @@ from discord import app_commands
 from discord.ext import commands
 from client.openrouter import OPENROUTER_CLIENT
 from client.database import Session, UserSettings
-from config import GROK_MODEL
+from config import settings
 
 logger = logging.getLogger('discord')
-
-GROK_SYSTEM_PROMPT = "You are a fact-checking assistant. Your job is to verify whether the given claim is true or false using web search. Provide a clear verdict, supporting evidence, and cite your sources. Be concise but thorough. CRITICAL: Your entire response MUST be under 2000 characters. Do not exceed this limit."
 
 URL_REGEX = re.compile(r'https?://[^\s<>"\'\]\)]+')
 
@@ -22,12 +20,12 @@ class GrokCheck(commands.Cog):
         self.ctx_menu = app_commands.ContextMenu(
             name="@grok is this true?",
             callback=self.grok_check,
-            allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
+            allowed_installs=app_commands.AppInstallationType(guild=False, user=True),
             allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True)
         )
         self.bot.tree.add_command(self.ctx_menu)
 
-    def cog_unload(self):
+    async def cog_unload(self):
         self.bot.tree.remove_command(self.ctx_menu.name, type=self.ctx_menu.type)
 
     def _extract_urls(self, *texts: str) -> list[str]:
@@ -145,11 +143,14 @@ class GrokCheck(commands.Cog):
             user_content = context_str
 
         user_id = str(interaction.user.id)
-        user_settings = Session.get(UserSettings, user_id)
-        grok_model = user_settings.grok_model if user_settings else GROK_MODEL
+        with Session() as session:
+            user_settings = session.get(UserSettings, user_id)
+        grok_model = user_settings.grok_model if user_settings else settings.GROK_MODEL
+        grok_prompt = user_settings.grok_system_prompt if user_settings else settings.BASE_GROK_SYSTEM_PROMPT
+        grok_temperature = user_settings.grok_temperature if user_settings else 1.0
 
         messages = [
-            {"role": "system", "content": GROK_SYSTEM_PROMPT},
+            {"role": "system", "content": grok_prompt},
             {"role": "user", "content": user_content}
         ]
 
@@ -158,6 +159,7 @@ class GrokCheck(commands.Cog):
                 model=grok_model,
                 messages=messages,
                 max_completion_tokens=1000,
+                temperature=grok_temperature,
                 tools=[{"type": "openrouter:web_search"}]
             )
             response = URL_REGEX.sub(r'<\g<0>>', response)

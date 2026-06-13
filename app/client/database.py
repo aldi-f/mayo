@@ -1,48 +1,67 @@
-from typing import Any
 import logging
+
+from config import settings
 from sqlalchemy import create_engine
-from sqlalchemy import JSON
-from sqlalchemy.orm import DeclarativeBase, Mapped
-from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import sessionmaker, scoped_session
-from sqlalchemy.ext.mutable import MutableDict, MutableList
-from config import BASE_SYSTEM_PROMPT, GROK_MODEL
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+    sessionmaker,
+)
 
-logger = logging.getLogger('discord')
+logger = logging.getLogger("discord")
 
-DATABASE_PATH = "/data/mayo.db"
-DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-session_factory = sessionmaker(engine)
-Session = scoped_session(session_factory)
-
+engine = create_engine(settings.DATABASE_URL, connect_args={"check_same_thread": False})
+Session = sessionmaker(engine)
 
 class Base(DeclarativeBase):
-    type_annotation_map = {
-        dict[str, Any]: MutableDict.as_mutable(JSON),
-        list[int]: MutableList.as_mutable(JSON),
-        list[str]: MutableList.as_mutable(JSON)
-    }
+    pass
+
+
 class Servers(Base):
     __tablename__ = "servers"
-
     server_id: Mapped[str] = mapped_column(primary_key=True)
-    server_name: Mapped[str] = mapped_column(nullable=True)
-    model: Mapped[str] = mapped_column(default="google/gemini-2.0-flash-001")
-    system_prompt: Mapped[str] = mapped_column(default=BASE_SYSTEM_PROMPT)
+    chat_model: Mapped[str] = mapped_column(default=settings.BASE_MODEL)
+    chat_system_prompt: Mapped[str] = mapped_column(default=settings.BASE_SYSTEM_PROMPT)
+    chat_temperature: Mapped[float] = mapped_column(default=1.0)
+    chat_total_cost: Mapped[float] = mapped_column(default=0.0)
 
 
 class UserSettings(Base):
     __tablename__ = "user_settings"
-
-    id: Mapped[str] = mapped_column(primary_key=True)
-    model: Mapped[str] = mapped_column(default="google/gemini-2.0-flash-001")
-    system_prompt: Mapped[str] = mapped_column(default=BASE_SYSTEM_PROMPT)
-    grok_model: Mapped[str] = mapped_column(default=GROK_MODEL)
+    user_id: Mapped[str] = mapped_column(primary_key=True)
+    chat_model: Mapped[str] = mapped_column(default=settings.BASE_MODEL)
+    chat_system_prompt: Mapped[str] = mapped_column(default=settings.BASE_SYSTEM_PROMPT)
+    chat_temperature: Mapped[float] = mapped_column(default=1.0)
+    chat_total_cost: Mapped[float] = mapped_column(default=0.0)
+    grok_model: Mapped[str] = mapped_column(default=settings.GROK_MODEL)
+    grok_system_prompt: Mapped[str] = mapped_column(
+        default=settings.BASE_GROK_SYSTEM_PROMPT
+    )
+    grok_temperature: Mapped[float] = mapped_column(default=1.0)
+    grok_total_cost: Mapped[float] = mapped_column(default=0.0)
 
 
 def init_db():
-    with engine.connect(): # just to start it
+    with engine.connect():  # just to start it
         Base.metadata.create_all(engine)
-    
+
+
+def get_or_create_server(server_id: str) -> Servers:
+    with Session() as session:
+        server = session.get(Servers, server_id)
+        if not server:
+            server = Servers(server_id=server_id)
+            session.add(server)
+            session.commit()
+        return server
+
+def get_or_create_user(user_id: str) -> UserSettings:
+    with Session() as session:
+        user = session.get(UserSettings, user_id)
+        if not user:
+            user = UserSettings(user_id=user_id)
+            session.add(user)
+            session.commit()
+        return user

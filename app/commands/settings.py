@@ -2,104 +2,160 @@ import discord
 import requests
 from discord import app_commands
 from discord.ext import commands
-from client.database import Session, Servers, UserSettings
-from config import BASE_SYSTEM_PROMPT, GROK_MODEL
+from client.database import Session, Servers, UserSettings, get_or_create_user
+from config import settings
+
+SERVER_SETTINGS_FIELDS = [
+    ("chat_model", "```{value}```"),
+    ("chat_system_prompt", "```{value}```"),
+    ("chat_temperature", "```{value}```"),
+    ("chat_total_cost", "```${value:.4f}```"),
+]
+
+USER_SETTINGS_FIELDS = SERVER_SETTINGS_FIELDS + [
+    ("grok_model", "```{value}```"),
+    ("grok_system_prompt", "```{value}```"),
+    ("grok_temperature", "```{value}```"),
+    ("grok_total_cost", "```${value:.4f}```"),
+]
+
+
+def _build_settings_embed(obj, fields, title, color, description=None) -> discord.Embed:
+    embed = discord.Embed(title=title, color=color, description=description)
+    for attr, fmt in fields:
+        value = getattr(obj, attr)
+        embed.add_field(name=attr, value=fmt.format(value=value), inline=False)
+    return embed
+
 
 class Settings(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.group(name='settings', invoke_without_command=True)
+    @commands.group(name="settings", invoke_without_command=True)
     @commands.is_owner()
-    async def settings(self, ctx):
+    async def settings(self, ctx: commands.Context):
         if ctx.invoked_subcommand is None:
-            server = Session.get(Servers, str(ctx.guild.id))
-            if server:
-                embed = discord.Embed(
-                    title="Server Settings",
-                    description=f"Use .settings model|prompt to change settings",
-                    color=discord.Color.blue()
-                )
-                embed.add_field(name="Model", value=f"```{server.model}```", inline=False)
-                embed.add_field(name="System Prompt", value=f"```{server.system_prompt}```", inline=False)
-                await ctx.send(embed=embed)
-            else:
-                await ctx.send("❌ Server not found in database.")
+            with Session() as session:
+                server = session.get(Servers, str(ctx.guild.id))
+                if server:
+                    embed = _build_settings_embed(
+                        server, SERVER_SETTINGS_FIELDS, "Server Settings", discord.Color.blue(),
+                        "Use `.settings chat_model|chat_system_prompt|chat_temperature` to change settings",
+                    )
+                    await ctx.send(embed=embed)
+                else:
+                    await ctx.send("Server not found in database.")
 
-
-    @settings.command(name='model')
+    @settings.command(name="chat_model")
     @commands.is_owner()
-    async def set_model(self, ctx, *, model: str):
+    async def set_chat_model(self, ctx, *, model: str):
         if not model:
-            await ctx.send("❌ Please provide a model name.")
+            await ctx.send("Please provide a model name.")
             return
-        
-        # Get list of available models from OpenRouter API
+
         response = requests.get("https://openrouter.ai/api/v1/models")
-        available_models = [model['id'] for model in response.json()["data"]]
+        available_models = [m["id"] for m in response.json()["data"]]
         if model not in available_models:
-            await ctx.send("❌ Invalid model name.")
-        else:
-            server = Session.get(Servers, str(ctx.guild.id))
-            server.model = model
-            Session.commit()
-            await ctx.send(f"✅ Model updated successfully to {model}!")
-
-
-    @settings.command(name='prompt')
-    @commands.is_owner()
-    async def set_prompt(self, ctx, *, prompt: str):
-        if not prompt:
-            await ctx.send("❌ Please provide a system prompt.")
+            await ctx.send("Invalid model name.")
             return
-        
-        server = Session.get(Servers, str(ctx.guild.id))
-        server.system_prompt = prompt
-        Session.commit()
-        await ctx.send(f"✅ System prompt updated successfully!")
 
-    @set_model.error
-    @set_prompt.error
-    async def settings_error(self, ctx, error):
+        with Session() as session:
+            server = session.get(Servers, str(ctx.guild.id))
+            server.chat_model = model
+            session.commit()
+        await ctx.send(f"Chat model updated to `{model}`!")
+
+    @settings.command(name="chat_system_prompt")
+    @commands.is_owner()
+    async def set_chat_system_prompt(self, ctx, *, prompt: str):
+        if not prompt:
+            await ctx.send("Please provide a system prompt.")
+            return
+
+        with Session() as session:
+            server = session.get(Servers, str(ctx.guild.id))
+            server.chat_system_prompt = prompt
+            session.commit()
+        await ctx.send("Chat system prompt updated!")
+
+    @settings.command(name="chat_temperature")
+    @commands.is_owner()
+    async def set_chat_temperature(self, ctx, *, temperature: float):
+        if temperature < 0.0 or temperature > 2.0:
+            await ctx.send("Temperature must be between 0.0 and 2.0.")
+            return
+
+        with Session() as session:
+            server = session.get(Servers, str(ctx.guild.id))
+            server.chat_temperature = temperature
+            session.commit()
+        await ctx.send(f"Chat temperature updated to `{temperature}`!")
+
+    async def cog_command_error(self, ctx, error):
         if isinstance(error, commands.NotOwner):
-            await ctx.send("❌ Only bot owner can use this command.")
-
+            await ctx.send("Only bot owner can use this command.")
+        elif isinstance(error, commands.BadArgument):
+            await ctx.send("Invalid value. Check the expected type.")
+        else:
+            raise error
 
     @app_commands.command(name="settings", description="Show or set your personal settings")
-    @app_commands.describe(model="Set your preferred model", prompt="Set your system prompt", grok_model="Set your Grok fact-check model")
+    @app_commands.describe(
+        chat_model="Set your preferred chat model",
+        chat_prompt="Set your system prompt",
+        chat_temperature="Set chat temperature (0.0 - 2.0)",
+        grok_model="Set your Grok fact-check model",
+        grok_prompt="Set your Grok system prompt",
+        grok_temperature="Set Grok temperature (0.0 - 2.0)",
+    )
     @app_commands.allowed_installs(users=True, guilds=False)
-    async def user_settings(self, interaction: discord.Interaction, model: str = None, prompt: str = None, grok_model: str = None):
+    async def user_settings(
+        self,
+        interaction: discord.Interaction,
+        chat_model: str | None = None,
+        chat_prompt: str | None = None,
+        chat_temperature: float | None = None,
+        grok_model: str | None = None,
+        grok_prompt: str | None = None,
+        grok_temperature: float | None = None,
+    ):
         user_id = str(interaction.user.id)
-        # Fetch or create user settings
-        user_settings = Session.get(UserSettings, user_id)
-        if not user_settings:
-            user_settings = UserSettings(id=user_id, model="google/gemini-2.0-flash-001", system_prompt=BASE_SYSTEM_PROMPT, grok_model=GROK_MODEL)
-            Session.add(user_settings)
-            Session.commit()
+        get_or_create_user(user_id)
 
-        # Update if provided
-        updated = False
-        if model:
-            user_settings.model = model
-            updated = True
-        if prompt:
-            user_settings.system_prompt = prompt
-            updated = True
-        if grok_model:
-            user_settings.grok_model = grok_model
-            updated = True
+        with Session() as session:
+            user = session.get(UserSettings, user_id)
+
+            updated = False
+            if chat_model is not None:
+                user.chat_model = chat_model
+                updated = True
+            if chat_prompt is not None:
+                user.chat_system_prompt = chat_prompt
+                updated = True
+            if chat_temperature is not None:
+                user.chat_temperature = chat_temperature
+                updated = True
+            if grok_model is not None:
+                user.grok_model = grok_model
+                updated = True
+            if grok_prompt is not None:
+                user.grok_system_prompt = grok_prompt
+                updated = True
+            if grok_temperature is not None:
+                user.grok_temperature = grok_temperature
+                updated = True
+            if updated:
+                session.commit()
+
         if updated:
-            Session.commit()
-            await interaction.response.send_message("✅ Your settings have been updated!", ephemeral=True)
-        else:
-            embed = discord.Embed(
-                title="Your Settings",
-                color=discord.Color.green()
+            await interaction.response.send_message(
+                "Your settings have been updated!", ephemeral=True
             )
-            embed.add_field(name="Model", value=f"```{user_settings.model}```", inline=False)
-            embed.add_field(name="System Prompt", value=f"```{user_settings.system_prompt}```", inline=False)
-            embed.add_field(name="Grok Model", value=f"```{user_settings.grok_model}```", inline=False)
+        else:
+            embed = _build_settings_embed(user, USER_SETTINGS_FIELDS, "Your Settings", discord.Color.green())
             await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(Settings(bot))
