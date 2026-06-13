@@ -9,7 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from client.openrouter import OPENROUTER_CLIENT
-from client.database import Session, Servers, UserSettings
+from client.database import Session, Servers, UserSettings, get_or_create_user
 from config import settings
 import discord.ext
 
@@ -117,8 +117,9 @@ class Gemini(commands.Cog):
                 messages=complete_prompt,
                 temperature=temperature,
             )
+            content = response.choices[0].message.content[:2000]
 
-            await ctx.send(response)
+            await ctx.send(content)
 
 
     @app_commands.command(name="chat", description="Chat with the bot using your personal settings")
@@ -128,30 +129,30 @@ class Gemini(commands.Cog):
         await interaction.response.defer(thinking=True)
 
         user_id = str(interaction.user.id)
+        get_or_create_user(user_id)
         with Session() as session:
             user_settings = session.get(UserSettings, user_id)
-            if user_settings:
-                system_prompt = user_settings.chat_system_prompt or settings.BASE_SYSTEM_PROMPT
-                model = user_settings.chat_model or settings.BASE_MODEL
-                temperature = user_settings.chat_temperature or 1.0
-            else:
-                system_prompt = settings.BASE_SYSTEM_PROMPT
-                model = settings.BASE_MODEL
-                temperature = 1.0
-                user = UserSettings(user_id=user_id, chat_model=model, chat_system_prompt=system_prompt)
-                session.add(user)
-                session.commit()
+            system_prompt = user_settings.chat_system_prompt or settings.BASE_SYSTEM_PROMPT
+            model = user_settings.chat_model or settings.BASE_MODEL
+            temperature = user_settings.chat_temperature or 1.0
 
         context = await self.bot.get_context(interaction)
         complete_prompt = [{"role": "system", "content": system_prompt}] + await self.build_prompt(context, prompt)
 
-        response = OPENROUTER_CLIENT.chat(
+        resp = OPENROUTER_CLIENT.chat(
             model=model,
             messages=complete_prompt,
             temperature=temperature,
         )
+        content = resp.choices[0].message.content[:2000]
+        usage = resp.model_extra.get("usage", {})
+        cost = usage.get("cost", 0.0)
+        with Session() as session:
+            user = session.get(UserSettings, user_id)
+            user.chat_total_cost = (user.chat_total_cost or 0.0) + cost
+            session.commit()
 
-        await interaction.followup.send(response)
+        await interaction.followup.send(content)
 
 
 async def setup(bot: discord.ext.commands.Bot):

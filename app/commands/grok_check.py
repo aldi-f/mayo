@@ -6,7 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from client.openrouter import OPENROUTER_CLIENT
-from client.database import Session, UserSettings
+from client.database import Session, UserSettings, get_or_create_user
 from config import settings
 
 logger = logging.getLogger('discord')
@@ -143,11 +143,12 @@ class GrokCheck(commands.Cog):
             user_content = context_str
 
         user_id = str(interaction.user.id)
+        get_or_create_user(user_id)
         with Session() as session:
             user_settings = session.get(UserSettings, user_id)
-        grok_model = user_settings.grok_model if user_settings else settings.GROK_MODEL
-        grok_prompt = user_settings.grok_system_prompt if user_settings else settings.BASE_GROK_SYSTEM_PROMPT
-        grok_temperature = user_settings.grok_temperature if user_settings else 1.0
+        grok_model = user_settings.grok_model or settings.GROK_MODEL
+        grok_prompt = user_settings.grok_system_prompt or settings.BASE_GROK_SYSTEM_PROMPT
+        grok_temperature = user_settings.grok_temperature or 1.0
 
         messages = [
             {"role": "system", "content": grok_prompt},
@@ -155,14 +156,21 @@ class GrokCheck(commands.Cog):
         ]
 
         try:
-            response = OPENROUTER_CLIENT.chat(
+            resp = OPENROUTER_CLIENT.chat(
                 model=grok_model,
                 messages=messages,
                 max_completion_tokens=1000,
                 temperature=grok_temperature,
                 tools=[{"type": "openrouter:web_search"}]
             )
-            response = URL_REGEX.sub(r'<\g<0>>', response)
+            content = resp.choices[0].message.content[:2000]
+            usage = resp.model_extra.get("usage", {})
+            cost = usage.get("cost", 0.0)
+            with Session() as session:
+                user = session.get(UserSettings, user_id)
+                user.grok_total_cost = (user.grok_total_cost or 0.0) + cost
+                session.commit()
+            response = URL_REGEX.sub(r'<\g<0>>', content)
             chunks = self._chunk_text(response)
             await interaction.edit_original_response(content=chunks[0])
             for chunk in chunks[1:]:

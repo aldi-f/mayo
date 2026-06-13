@@ -27,6 +27,6 @@ class OpenRouterClient:
         
         response = self._client.chat.completions.create(**kwargs)
         
-        return response.choices[0].message.content[:2000]
+        return response
 
 OPENROUTER_CLIENT = OpenRouterClient()

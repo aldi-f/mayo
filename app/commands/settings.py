@@ -108,6 +108,7 @@ class Settings(commands.Cog):
         grok_model="Set your Grok fact-check model",
         grok_prompt="Set your Grok system prompt",
         grok_temperature="Set Grok temperature (0.0 - 2.0)",
+        user_id="View or edit another user's settings (bot owner only)",
     )
     @app_commands.allowed_installs(users=True, guilds=False)
     async def user_settings(
@@ -119,12 +120,28 @@ class Settings(commands.Cog):
         grok_model: str | None = None,
         grok_prompt: str | None = None,
         grok_temperature: float | None = None,
+        user_id: str | None = None,
     ):
-        user_id = str(interaction.user.id)
-        get_or_create_user(user_id)
+        target_id = user_id or str(interaction.user.id)
+        if user_id and not await self.bot.is_owner(interaction.user):
+            await interaction.response.send_message(
+                "Only bot owner can view other users' settings.", ephemeral=True
+            )
+            return
+
+        get_or_create_user(target_id)
+
+        if user_id:
+            try:
+                target_user = await self.bot.fetch_user(int(target_id))
+                title = f"{target_user.name}'s Settings"
+            except Exception:
+                title = f"User {target_id}'s Settings"
+        else:
+            title = "Your Settings"
 
         with Session() as session:
-            user = session.get(UserSettings, user_id)
+            user = session.get(UserSettings, target_id)
 
             updated = False
             if chat_model is not None:
@@ -150,10 +167,10 @@ class Settings(commands.Cog):
 
         if updated:
             await interaction.response.send_message(
-                "Your settings have been updated!", ephemeral=True
+                "Settings updated!", ephemeral=True
             )
         else:
-            embed = _build_settings_embed(user, USER_SETTINGS_FIELDS, "Your Settings", discord.Color.green())
+            embed = _build_settings_embed(user, USER_SETTINGS_FIELDS, title, discord.Color.green())
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
