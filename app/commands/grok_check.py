@@ -164,8 +164,7 @@ class GrokCheck(commands.Cog):
                 tools=[{"type": "openrouter:web_search"}]
             )
             content = resp.choices[0].message.content[:2000]
-            usage = resp.model_extra.get("usage", {})
-            cost = usage.get("cost", 0.0)
+            cost = resp.usage.cost if resp.usage and resp.usage.cost is not None else 0.0
             with Session() as session:
                 user = session.get(UserSettings, user_id)
                 user.grok_total_cost = (user.grok_total_cost or 0.0) + cost
