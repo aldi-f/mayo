@@ -1,6 +1,6 @@
 import logging
 import re
-import requests
+import aiohttp
 import base64
 import discord
 from discord import app_commands
@@ -42,21 +42,27 @@ class GrokCheck(commands.Cog):
                 unique.append(url)
         return unique
 
-    def _fetch_page_text(self, url: str, max_chars: int = 2000) -> str | None:
+    async def _fetch_page_text(self, url: str, max_chars: int = 2000) -> str | None:
         try:
-            resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-            if resp.status_code != 200:
-                return None
-            text = re.sub(r'<[^>]+>', '', resp.text)
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
+                    if resp.status != 200:
+                        return None
+                    html = await resp.text()
+            text = re.sub(r'<[^>]+>', '', html)
             text = re.sub(r'\s+', ' ', text).strip()
             return text[:max_chars]
         except Exception as e:
             logger.debug(f"Failed to fetch {url}: {e}")
             return None
 
-    def _image_to_base64(self, image_url: str) -> str | None:
+    async def _image_to_base64(self, image_url: str) -> str | None:
         try:
-            image_bytes = requests.get(image_url, timeout=10).content
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(image_url) as resp:
+                    image_bytes = await resp.read()
             return f"data:image/jpeg;base64,{base64.b64encode(image_bytes).decode('utf-8')}"
         except Exception as e:
             logger.debug(f"Failed to convert image to base64: {e}")
@@ -123,7 +129,7 @@ class GrokCheck(commands.Cog):
             context_parts.append(f"Message content:\n{source_text}")
 
         for url in urls[:3]:
-            page_text = self._fetch_page_text(url)
+            page_text = await self._fetch_page_text(url)
             if page_text:
                 context_parts.append(f"Content from {url}:\n{page_text}")
 
@@ -135,7 +141,7 @@ class GrokCheck(commands.Cog):
         if image_attachments:
             content_parts = [{"type": "text", "text": context_str}]
             for att in image_attachments[:4]:
-                b64 = self._image_to_base64(att.url)
+                b64 = await self._image_to_base64(att.url)
                 if b64:
                     content_parts.append({"type": "image_url", "image_url": {"url": b64}})
             user_content = content_parts
@@ -156,7 +162,7 @@ class GrokCheck(commands.Cog):
         ]
 
         try:
-            resp = OPENROUTER_CLIENT.chat(
+            resp = await OPENROUTER_CLIENT.achat(
                 model=grok_model,
                 messages=messages,
                 max_completion_tokens=1000,

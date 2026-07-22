@@ -1,6 +1,6 @@
 import logging
 import discord.ext.commands
-import requests
+import aiohttp
 import base64
 from typing import List, Optional
 from openai.types.chat import ChatCompletionMessageParam
@@ -27,9 +27,11 @@ class Gemini(commands.Cog):
         return int(len(text) / 4)
 
 
-    def image_to_base64(self, image_url: str) -> Optional[str]:
+    async def image_to_base64(self, image_url: str) -> Optional[str]:
         try:
-            image_bytes = requests.get(image_url).content
+            async with aiohttp.ClientSession() as session:
+                async with session.get(image_url) as resp:
+                    image_bytes = await resp.read()
             return f"data:image/jpeg;base64,{base64.b64encode(image_bytes).decode('utf-8')}"
         except Exception as e:
             logger.error(f"Failed to convert image to base64: {e}")
@@ -78,7 +80,7 @@ class Gemini(commands.Cog):
         if image_urls:
             complete_prompt[-1]["content"] = [
                 {"type": "text", "text": prompt},
-                *[{"type": "image_url", "image_url": {"url": self.image_to_base64(url)}} for url in image_urls]
+                *[{"type": "image_url", "image_url": {"url": await self.image_to_base64(url)}} for url in image_urls]
             ]
 
         self.conversation_history[ctx.author.id] = complete_prompt[-self.max_history_length:]
@@ -112,7 +114,7 @@ class Gemini(commands.Cog):
                     text_prompts.append(prompt)
             logger.info(text_prompts)
 
-            response = OPENROUTER_CLIENT.chat(
+            response = await OPENROUTER_CLIENT.achat(
                 model=model,
                 messages=complete_prompt,
                 temperature=temperature,
@@ -139,7 +141,7 @@ class Gemini(commands.Cog):
         context = await self.bot.get_context(interaction)
         complete_prompt = [{"role": "system", "content": system_prompt}] + await self.build_prompt(context, prompt)
 
-        resp = OPENROUTER_CLIENT.chat(
+        resp = await OPENROUTER_CLIENT.achat(
             model=model,
             messages=complete_prompt,
             temperature=temperature,

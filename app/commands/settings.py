@@ -1,5 +1,5 @@
 import discord
-import requests
+import aiohttp
 from discord import app_commands
 from discord.ext import commands
 from client.database import Session, Servers, UserSettings, get_or_create_user
@@ -54,8 +54,10 @@ class Settings(commands.Cog):
             await ctx.send("Please provide a model name.")
             return
 
-        response = requests.get("https://openrouter.ai/api/v1/models")
-        available_models = [m["id"] for m in response.json()["data"]]
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://openrouter.ai/api/v1/models") as resp:
+                data = await resp.json()
+        available_models = [m["id"] for m in data["data"]]
         if model not in available_models:
             await ctx.send("Invalid model name.")
             return
