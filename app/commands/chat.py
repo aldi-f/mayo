@@ -118,6 +118,10 @@ class Gemini(commands.Cog):
                 model=model,
                 messages=complete_prompt,
                 temperature=temperature,
+                tools=[
+                    {"type": "openrouter:web_search"},
+                    {"type": "openrouter:web_fetch"}
+                ]
             )
             content = response.choices[0].message.content[:2000]
 
@@ -145,6 +149,10 @@ class Gemini(commands.Cog):
             model=model,
             messages=complete_prompt,
             temperature=temperature,
+            tools=[
+                {"type": "openrouter:web_search"},
+                {"type": "openrouter:web_fetch"}
+            ]
         )
         content = resp.choices[0].message.content[:2000]
         cost = resp.usage.cost if resp.usage and resp.usage.cost is not None else 0.0

@@ -167,7 +167,10 @@ class GrokCheck(commands.Cog):
                 messages=messages,
                 max_completion_tokens=1000,
                 temperature=grok_temperature,
-                tools=[{"type": "openrouter:web_search"}]
+                tools=[
+                    {"type": "openrouter:web_search"},
+                    {"type": "openrouter:web_fetch"}
+                ]
             )
             content = resp.choices[0].message.content[:2000]
             cost = resp.usage.cost if resp.usage and resp.usage.cost is not None else 0.0
