@@ -10,7 +10,7 @@ class Settings:
     GUILD_ID: int | None = None
 
     BASE_MODEL = os.getenv("BASE_MODEL", "google/gemini-3.1-flash-lite")
-    GROK_MODEL = os.getenv("GROK_MODEL", "x-ai/grok-4.3")
+    GROK_MODEL = os.getenv("GROK_MODEL", "xiaomi/mimo-v2.5") # the chinese are cheaper and better
 
 
     BASE_SYSTEM_PROMPT: str = os.getenv("BASE_SYSTEM_PROMPT",(
@@ -23,7 +23,7 @@ class Settings:
         "You are a fact-checking assistant."
         "Your job is to verify whether the given claim is true or false using web search."
         "Ensure the text fact is real first before going into checking if the post itself is true."
-        "Provide a clear verdict, supporting evidence, and cite your sources."
+        "Provide a clear verdict, supporting evidence, and cite your sources with markdown formatted full link when possible."
         "Be concise but thorough."
         "CRITICAL: Your entire response MUST be under 2000 characters. Do not exceed this limit."
     ))
