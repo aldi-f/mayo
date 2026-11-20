@@ -5,7 +5,7 @@ import base64
 import discord
 from discord import app_commands
 from discord.ext import commands
-from client.openrouter import OPENROUTER_CLIENT
+from client.openrouter import OPENROUTER_CLIENT, EmptyCompletionError, extract_text
 from client.database import Session, UserSettings, get_or_create_user
 from config import settings
 
@@ -154,7 +154,7 @@ class GrokCheck(commands.Cog):
             user_settings = session.get(UserSettings, user_id)
         grok_model = user_settings.grok_model or settings.GROK_MODEL
         grok_prompt = user_settings.grok_system_prompt or settings.BASE_GROK_SYSTEM_PROMPT
-        grok_temperature = user_settings.grok_temperature or 1.0
+        grok_temperature = user_settings.grok_temperature if user_settings.grok_temperature is not None else 1.0
 
         messages = [
             {"role": "system", "content": grok_prompt},
@@ -165,24 +165,28 @@ class GrokCheck(commands.Cog):
             resp = await OPENROUTER_CLIENT.achat(
                 model=grok_model,
                 messages=messages,
-                max_completion_tokens=1000,
                 temperature=grok_temperature,
+                reasoning={"effort": settings.REASONING_EFFORT},
                 tools=[
                     {"type": "openrouter:web_search"},
                     {"type": "openrouter:web_fetch"}
                 ]
             )
-            content = resp.choices[0].message.content[:2000]
             cost = resp.usage.cost if resp.usage and resp.usage.cost is not None else 0.0
             with Session() as session:
                 user = session.get(UserSettings, user_id)
                 user.grok_total_cost = (user.grok_total_cost or 0.0) + cost
                 session.commit()
+            content = extract_text(resp)
             response = URL_REGEX.sub(r'<\g<0>>', content)
             chunks = self._chunk_text(response)
             await interaction.edit_original_response(content=chunks[0])
             for chunk in chunks[1:]:
                 await interaction.followup.send(chunk)
+        except EmptyCompletionError as e:
+            logger.warning(f"Grok check returned no text: {e}")
+            await interaction.followup.send("The model returned no verdict — try again.", ephemeral=True)
+            return
         except Exception as e:
             logger.error(f"Grok check failed: {e}")
             await interaction.followup.send(f"Failed to check claim: {e}", ephemeral=True)

@@ -8,12 +8,20 @@ from openai.types.chat import ChatCompletionMessageParam
 import discord
 from discord import app_commands
 from discord.ext import commands
-from client.openrouter import OPENROUTER_CLIENT
+from client.openrouter import OPENROUTER_CLIENT, EmptyCompletionError, extract_text
 from client.database import Session, Servers, UserSettings, get_or_create_user
 from config import settings
 import discord.ext
 
 logger = logging.getLogger('discord')
+
+
+def with_length_limit(system_prompt: str) -> str:
+    """Ask the model to fit one Discord message so replies are not truncated mid-sentence."""
+    return (
+        f"{system_prompt}\n\n"
+        f"Keep your entire reply under {settings.DISCORD_MESSAGE_LIMIT} characters."
+    )
 
 
 class Gemini(commands.Cog):
@@ -95,9 +103,9 @@ class Gemini(commands.Cog):
         async with ctx.typing():
             with Session() as session:
                 server = session.get(Servers, str(ctx.guild.id))
-                system_prompt = server.chat_system_prompt or settings.BASE_SYSTEM_PROMPT
+                system_prompt = with_length_limit(server.chat_system_prompt or settings.BASE_SYSTEM_PROMPT)
                 model = server.chat_model or settings.BASE_MODEL
-                temperature = server.chat_temperature or 1.0
+                temperature = server.chat_temperature if server.chat_temperature is not None else 1.0
 
             complete_prompt = [{"role": "system", "content": system_prompt}] + await self.build_prompt(ctx, prompt)
 
@@ -118,12 +126,18 @@ class Gemini(commands.Cog):
                 model=model,
                 messages=complete_prompt,
                 temperature=temperature,
+                reasoning={"effort": settings.REASONING_EFFORT},
                 tools=[
                     {"type": "openrouter:web_search"},
                     {"type": "openrouter:web_fetch"}
                 ]
             )
-            content = response.choices[0].message.content[:2000]
+
+            try:
+                content = extract_text(response)[:settings.DISCORD_MESSAGE_LIMIT]
+            except EmptyCompletionError:
+                await ctx.send("The model came back empty — try that again?")
+                return
 
             await ctx.send(content)
 
@@ -138,9 +152,9 @@ class Gemini(commands.Cog):
         get_or_create_user(user_id)
         with Session() as session:
             user_settings = session.get(UserSettings, user_id)
-            system_prompt = user_settings.chat_system_prompt or settings.BASE_SYSTEM_PROMPT
+            system_prompt = with_length_limit(user_settings.chat_system_prompt or settings.BASE_SYSTEM_PROMPT)
             model = user_settings.chat_model or settings.BASE_MODEL
-            temperature = user_settings.chat_temperature or 1.0
+            temperature = user_settings.chat_temperature if user_settings.chat_temperature is not None else 1.0
 
         context = await self.bot.get_context(interaction)
         complete_prompt = [{"role": "system", "content": system_prompt}] + await self.build_prompt(context, prompt)
@@ -149,17 +163,23 @@ class Gemini(commands.Cog):
             model=model,
             messages=complete_prompt,
             temperature=temperature,
+            reasoning={"effort": settings.REASONING_EFFORT},
             tools=[
                 {"type": "openrouter:web_search"},
                 {"type": "openrouter:web_fetch"}
             ]
         )
-        content = resp.choices[0].message.content[:2000]
         cost = resp.usage.cost if resp.usage and resp.usage.cost is not None else 0.0
         with Session() as session:
             user = session.get(UserSettings, user_id)
             user.chat_total_cost = (user.chat_total_cost or 0.0) + cost
             session.commit()
+
+        try:
+            content = extract_text(resp)[:settings.DISCORD_MESSAGE_LIMIT]
+        except EmptyCompletionError:
+            await interaction.followup.send("The model came back empty — try that again?")
+            return
 
         await interaction.followup.send(content)
 

@@ -8,6 +8,11 @@ class Settings:
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:////data/mayo.db")
     GUILD_ID: int | None = None
+    # Discord rejects messages longer than this.
+    DISCORD_MESSAGE_LIMIT: int = 2000
+    # Reasoning models like z-ai/glm-5.3-flash cannot disable thinking, so keep
+    # it cheap and fast instead of letting it eat the whole output budget.
+    REASONING_EFFORT: str = "low"
 
     BASE_MODEL = os.getenv("BASE_MODEL", "google/gemini-3.1-flash-lite")
     GROK_MODEL = os.getenv("GROK_MODEL", "xiaomi/mimo-v2.5") # the chinese are cheaper and better
@@ -25,7 +30,6 @@ class Settings:
         "Ensure the text fact is real first before going into checking if the post itself is true."
         "Provide a clear verdict, supporting evidence, and cite your sources with markdown formatted full link when possible."
         "Be concise but thorough."
-        "CRITICAL: Your entire response MUST be under 2000 characters. Do not exceed this limit."
     ))
 
     def __post_init__(self):
